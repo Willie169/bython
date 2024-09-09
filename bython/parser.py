@@ -4,11 +4,9 @@ import os
 """
 Python module for converting Bython code (C-style syntax) to Python code.
 
-This module includes utilities for renaming files from `.by` to `.py`, 
-parsing import statements, converting C-style type declarations to Python 
-function definitions, and adjusting code blocks. It also handles translating 
-comments from C-style to Python and ensures compatibility by adding `pass` 
-statements where needed in empty code blocks.
+This module includes utilities for renaming files from `.by` to `.py`,
+parsing import statements, converting C-style type declarations to Python function definitions,
+adjusting code blocks, and translating comments from C-style to Python.
 """
 
 
@@ -71,45 +69,6 @@ def parse_imports(filename):
     imports_with_suffixes = [im + ".by" for im in imports + imports2]
 
     return imports_with_suffixes
-
-
-def add_pass_to_empty_blocks(code):
-    """
-    Adds 'pass' to empty code blocks defined by '{}' in the Bython code.
-
-    Args:
-        code (str): The Bython code as a string
-
-    Returns:
-        str: The modified code with 'pass' added to empty blocks
-    """
-    lines = code.split("\n")
-    in_multiline_comment = False
-    result = []
-
-    for line in lines:
-        stripped = line.strip()
-
-        if '"""' in stripped or "'''" in stripped:
-            in_multiline_comment = not in_multiline_comment
-
-        if not in_multiline_comment:
-            code_part = line.split("#")[0]
-
-            if re.match(r".*{\s*}.*", code_part):
-                line = re.sub(
-                    r"{\s*}",
-                    "{\n"
-                    + " " * (len(line) - len(line.lstrip()))
-                    + "pass\n"
-                    + " " * (len(line) - len(line.lstrip()))
-                    + "}",
-                    line,
-                )
-
-        result.append(line)
-
-    return "\n".join(result)
 
 
 def convert_c_type_to_python(c_type):
@@ -225,23 +184,6 @@ def parse_file(
         indentation_sign = "    "
         infile_str_indented = ""
 
-        in_comment = False
-        comment = False
-        for line in infile_str_raw.splitlines():
-            # Check if the line is in multiline comment
-            if not in_comment:
-                if line.strip().startswith("\"\"\"") or line.strip().startswith("/*"):
-                    in_comment = True
-            else:
-                if line.strip().endswith("\"\"\"") or line.strip().endswith("*/"):
-                    in_comment = False
-
-            # Check if the line is one-line comment
-            if line.strip().startswith("#") or line.strip().startswith("//"):
-                comment = True
-            else:
-                comment = False
-
             # Search for comments, and remove for now. Re-add them before writing to
             # result string
             m = re.search(r"[ \t]*(#.*$)", line)
@@ -299,9 +241,13 @@ def parse_file(
             indented_line = re.sub(r"}[ \t]*", "", indented_line)
             indented_line = re.sub(r"\n:", ":", indented_line)
 
-            # Add 'pass' to empty code blocks 
-            if not (comment or in_comment):
-                indented_line = add_pass_to_empty_blocks(indented_line)
+            # Add 'pass' where there is only a {}. 
+            #
+            # DEPRECATED FOR NOW. This way of doing
+            # it is causing a lot of problems with {} in comments. The feature is removed
+            # until I find another way to do it. 
+    
+            # infile_str_raw = re.sub(r"{[\s\n\r]*}", "{\npass\n}", infile_str_raw)
 
             infile_str_indented += indented_line + add_comment + "\n"
 
