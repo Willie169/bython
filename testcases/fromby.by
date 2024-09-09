@@ -9,4 +9,19 @@ def test_function() {
 plt.show();
 }
 
+int add(int a, int b) {
+    return a + b
+}
+
+void empty() {}
+
+// {}
+/*
+{}
+*/
+'''
+{}
+'''
+# {}
+
 test_function()
