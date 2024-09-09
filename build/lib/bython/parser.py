@@ -219,15 +219,29 @@ def parse_file(
             outfile.write("true=True; false=False;\n")
 
         infile_str_raw = infile.read()
-        infile_str_raw = add_pass_to_empty_blocks(infile_str_raw)
         infile_str_raw = convert_comments(infile_str_raw)
 
         indentation_level = 0
         indentation_sign = "    "
         infile_str_indented = ""
 
-        # Fix indentation
+        in_comment = False
+        comment = False
         for line in infile_str_raw.splitlines():
+            # Check if the line is in multiline comment
+            if not in_comment:
+                if line.strip().startswith("\"\"\"") or line.strip().startswith("/*"):
+                    in_comment = True
+            else:
+                if line.strip().endswith("\"\"\"") or line.strip().endswith("*/"):
+                    in_comment = False
+
+            # Check if the line is one-line comment
+            if line.strip().startswith("#") or line.strip().startswith("//"):
+                comment = True
+            else:
+                comment = False
+
             # Search for comments, and remove for now. Re-add them before writing to
             # result string
             m = re.search(r"[ \t]*(#.*$)", line)
@@ -256,6 +270,7 @@ def parse_file(
                 is_empty_function,
             ) = convert_type_declaration(line)
 
+            # Fix indentation level
             if not is_function_def:
                 # Check for increased indentation
                 if line.endswith("{"):
@@ -283,6 +298,10 @@ def parse_file(
             indented_line = re.sub(r"[\t ]*{[ \t]*", ":", indented_line)
             indented_line = re.sub(r"}[ \t]*", "", indented_line)
             indented_line = re.sub(r"\n:", ":", indented_line)
+
+            # Add 'pass' to empty code blocks 
+            if not (comment or in_comment):
+                indented_line = add_pass_to_empty_blocks(indented_line)
 
             infile_str_indented += indented_line + add_comment + "\n"
 

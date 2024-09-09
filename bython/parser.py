@@ -219,9 +219,6 @@ def parse_file(
             outfile.write("true=True; false=False;\n")
 
         infile_str_raw = infile.read()
-        # Add pass to empty code blocks 
-        if not (comment or in_comment):
-            infile_str_raw = add_pass_to_empty_blocks(infile_str_raw)
         infile_str_raw = convert_comments(infile_str_raw)
 
         indentation_level = 0
@@ -301,6 +298,10 @@ def parse_file(
             indented_line = re.sub(r"[\t ]*{[ \t]*", ":", indented_line)
             indented_line = re.sub(r"}[ \t]*", "", indented_line)
             indented_line = re.sub(r"\n:", ":", indented_line)
+
+            # Add 'pass' to empty code blocks 
+            if not (comment or in_comment):
+                indented_line = add_pass_to_empty_blocks(indented_line)
 
             infile_str_indented += indented_line + add_comment + "\n"
 
