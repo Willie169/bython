@@ -69,6 +69,7 @@ def convert_c_type_to_python(c_type):
         "char": "str",
         "void": "None",
         "bool": "bool",
+        "def": "def"
     }
     return type_map.get(c_type, "Any")
 
@@ -76,19 +77,27 @@ def convert_c_type_to_python(c_type):
 def convert_type_declaration(line):
     """
     Converts a C-style function signature into a Python function signature.
+    Preserves Python-style function definitions without adding type hints.
 
     Args:
-        line (str): A line of Bython code containing a C-style function declaration
+        line (str): A line of Bython code containing a function declaration
 
     Returns:
         tuple: A tuple containing the Python-style function definition, a boolean
                indicating whether it is a function definition, and another boolean
                indicating whether it is an empty function (no body).
     """
-    pattern = r"(\w+)\s+(\w+)\s*(.*?)\s*(\{)?"
-    match = re.match(pattern, line)
-    if match:
-        return_type, func_name, params, has_body = match.groups()
+    # Check for Python-style function definition
+    py_pattern = r"def\s+\w+\s*\(.*?\)\s*:$"
+    py_match = re.match(py_pattern, line)
+    if py_match:
+        return f"{py_match.group(1)}:", True, False
+
+    # Check for C-style function declaration
+    c_pattern = r"(\w+)\s+(\w+)\s*\((.*?)\)\s*(\{)?\s*(\})?"
+    c_match = re.match(c_pattern, line)
+    if c_match:
+        return_type, func_name, params, opening_brace, closing_brace = c_match.groups()
         params_converted = []
         for param in params.split(","):
             param = param.strip()
@@ -98,20 +107,24 @@ def convert_type_declaration(line):
                 param_name = param_parts[-1]
                 python_type = convert_c_type_to_python(param_type)
                 params_converted.append(f"{param_name}: {python_type}")
-        python_return_type = convert_c_type_to_python(return_type)
+        
+        return_hint = f" -> {convert_c_type_to_python(return_type)}" if return_type != "void" else ""
 
-        if has_body:
+        is_empty_function = bool(opening_brace and closing_brace)
+
+        if return_hint == " -> def":
             return (
-                f"def {func_name}({', '.join(params_converted)}) -> {python_return_type}:",
+                f"def {func_name}({', '.join(params_converted)}):",
                 True,
-                False,
+                is_empty_function,
             )
-        else:
-            return (
-                f"def {func_name}({', '.join(params_converted)}) -> {python_return_type}: pass",
-                True,
-                True,
-            )
+        
+        return (
+            f"def {func_name}({', '.join(params_converted)}){return_hint}:",
+            True,
+            is_empty_function,
+        )
+    
     return line, False, False
 
 
@@ -145,9 +158,11 @@ def parse_file(
         Returns:
             str: Code with converted comments
         """
+        # Convert multi-line comments
         code = re.sub(
             r"/\*(.*?)\*/", lambda m: f"'''{m.group(1)}'''", code, flags=re.DOTALL
         )
+        # Convert single-line comments
         code = re.sub(r"//(.*)", lambda m: f"#{m.group(1)}", code)
         return code
 
@@ -166,27 +181,18 @@ def parse_file(
         infile_str_indented = ""
 
         for line in infile_str_raw.splitlines():
-
-            # Search for comments, and remove for now. Re-add them before writing to
-            # result string
-            m = re.search(r"[ \t]*(#.*$)", line)
-
-            # Make sure # sign is not inside quotations. Delete match object if it is
-            if m:
-                m2 = re.search(r"[\"'].*#.*[\"']", m.group(0))
-                if m2:
-                    m = None
-
-            add_comment = m.group(0) if m else ""
+            # Preserve existing comments
+            comment_match = re.match(r"([ \t]*)(#.*$)", line)
+            if comment_match:
+                infile_str_indented += comment_match.group(1) + comment_match.group(2) + "\n"
+                continue
 
             # remove existing whitespace:
             line = line.lstrip()
 
             # skip empty lines:
             if not line:
-                infile_str_indented += (
-                    indentation_level * indentation_sign + add_comment.lstrip() + "\n"
-                )
+                infile_str_indented += "\n"
                 continue
 
             # Convert C-style type declaration to Python type hint
@@ -197,35 +203,28 @@ def parse_file(
             ) = convert_type_declaration(line)
 
             # Fix indentation level
-            if not is_function_def:
+            if is_function_def:
+                indented_line = indentation_sign * indentation_level + converted_line
+                if not is_empty_function:
+                    indentation_level += 1
+            else:
                 # Check for increased indentation
                 if line.endswith("{"):
-                    indented_line = (
-                        indentation_sign * indentation_level + converted_line
-                    )
+                    indented_line = indentation_sign * indentation_level + line[:-1].rstrip() + ":"
                     indentation_level += 1
                 # Check for reduced indent level
                 elif line.startswith("}"):
                     indentation_level = max(0, indentation_level - 1)
-                    indented_line = (
-                        indentation_sign * indentation_level + converted_line
-                    )
+                    continue  # Skip this line as we don't need to write '}' in Python
                 # Add indentation
                 else:
-                    indented_line = (
-                        indentation_sign * indentation_level + converted_line
-                    )
-            else:
-                indented_line = converted_line
-                if not is_empty_function:
-                    indentation_level += 1
+                    indented_line = indentation_sign * indentation_level + line
 
-            # Replace { with : and remove }
-            indented_line = re.sub(r"[\t ]*{\s*", ":", indented_line)
-            indented_line = re.sub(r"\s*}", "", indented_line)
-            indented_line = re.sub(r"\n:", ":", indented_line)
+            # Add 'pass' for empty functions
+            if is_empty_function:
+                indented_line += "\n" + indentation_sign * (indentation_level + 1) + "pass"
 
-            infile_str_indented += indented_line + add_comment + "\n"
+            infile_str_indented += indented_line + "\n"
 
         # Support for extra, non-brace related stuff
         infile_str_indented = re.sub(r"else\s+if", "elif", infile_str_indented)
@@ -245,5 +244,4 @@ def parse_file(
                     infile_str_indented,
                 )
 
-        infile_str_indented = "from typing import Any\n\n" + infile_str_indented
         outfile.write(infile_str_indented)
