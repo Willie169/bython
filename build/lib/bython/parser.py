@@ -1,17 +1,6 @@
 import re
 import os
 
-"""
-Python module for converting Bython code (C-style syntax) to Python code.
-
-This module includes utilities for renaming files from `.by` to `.py`, 
-parsing import statements, converting C-style type declarations to Python 
-function definitions, and adjusting code blocks. It also handles translating 
-comments from C-style to Python and ensures compatibility by adding `pass` 
-statements where needed in empty code blocks.
-"""
-
-
 def _ends_in_by(word):
     """
     Returns True if word ends in .by, else False
@@ -22,9 +11,7 @@ def _ends_in_by(word):
     Returns:
         bool: Whether the 'word' ends with '.by' or not
     """
-    if word.endswith(".by"):
-        return True
-    return False
+    return word.endswith(".by")
 
 
 def _change_file_name(name, outputname=None):
@@ -40,15 +27,9 @@ def _change_file_name(name, outputname=None):
         str: Resulting filename with *.py at the end (unless 'outputname' is
         specified, then that is returned).
     """
-    # If outputname is specified, return that
     if outputname is not None:
         return outputname
-
-    # Otherwise, create a new name
-    if _ends_in_by(name):
-        return name[:-3] + ".py"
-    else:
-        return name + ".py"
+    return name[:-3] + ".py" if _ends_in_by(name) else name + ".py"
 
 
 def parse_imports(filename):
@@ -68,48 +49,7 @@ def parse_imports(filename):
     imports = re.findall(r"(?<=import\s)[\w.]+(?=;|\s|$)", infile_str)
     imports2 = re.findall(r"(?<=from\s)[\w.]+(?=\s+import)", infile_str)
 
-    imports_with_suffixes = [im + ".by" for im in imports + imports2]
-
-    return imports_with_suffixes
-
-
-def add_pass_to_empty_blocks(code):
-    """
-    Adds 'pass' to empty code blocks defined by '{}' in the Bython code.
-
-    Args:
-        code (str): The Bython code as a string
-
-    Returns:
-        str: The modified code with 'pass' added to empty blocks
-    """
-    lines = code.split("\n")
-    in_multiline_comment = False
-    result = []
-
-    for line in lines:
-        stripped = line.strip()
-
-        if '"""' in stripped or "'''" in stripped:
-            in_multiline_comment = not in_multiline_comment
-
-        if not in_multiline_comment:
-            code_part = line.split("#")[0]
-
-            if re.match(r".*{\s*}.*", code_part):
-                line = re.sub(
-                    r"{\s*}",
-                    "{\n"
-                    + " " * (len(line) - len(line.lstrip()))
-                    + "pass\n"
-                    + " " * (len(line) - len(line.lstrip()))
-                    + "}",
-                    line,
-                )
-
-        result.append(line)
-
-    return "\n".join(result)
+    return [im + ".by" for im in imports + imports2]
 
 
 def convert_c_type_to_python(c_type):
@@ -145,7 +85,7 @@ def convert_type_declaration(line):
                indicating whether it is a function definition, and another boolean
                indicating whether it is an empty function (no body).
     """
-    pattern = r"(\w+)\s+(\w+)\s*\((.*?)\)\s*(\{)?"
+    pattern = r"(\w+)\s+(\w+)\s*(.*?)\s*(\{)?"
     match = re.match(pattern, line)
     if match:
         return_type, func_name, params, has_body = match.groups()
@@ -225,22 +165,7 @@ def parse_file(
         indentation_sign = "    "
         infile_str_indented = ""
 
-        in_comment = False
-        comment = False
         for line in infile_str_raw.splitlines():
-            # Check if the line is in multiline comment
-            if not in_comment:
-                if line.strip().startswith("\"\"\"") or line.strip().startswith("/*"):
-                    in_comment = True
-            else:
-                if line.strip().endswith("\"\"\"") or line.strip().endswith("*/"):
-                    in_comment = False
-
-            # Check if the line is one-line comment
-            if line.strip().startswith("#") or line.strip().startswith("//"):
-                comment = True
-            else:
-                comment = False
 
             # Search for comments, and remove for now. Re-add them before writing to
             # result string
@@ -264,6 +189,7 @@ def parse_file(
                 )
                 continue
 
+            # Convert C-style type declaration to Python type hint
             (
                 converted_line,
                 is_function_def,
@@ -295,13 +221,9 @@ def parse_file(
                     indentation_level += 1
 
             # Replace { with : and remove }
-            indented_line = re.sub(r"[\t ]*{[ \t]*", ":", indented_line)
-            indented_line = re.sub(r"}[ \t]*", "", indented_line)
+            indented_line = re.sub(r"[\t ]*{\s*", ":", indented_line)
+            indented_line = re.sub(r"\s*}", "", indented_line)
             indented_line = re.sub(r"\n:", ":", indented_line)
-
-            # Add 'pass' to empty code blocks 
-            if not (comment or in_comment):
-                indented_line = add_pass_to_empty_blocks(indented_line)
 
             infile_str_indented += indented_line + add_comment + "\n"
 

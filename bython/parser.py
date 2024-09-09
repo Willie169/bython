@@ -1,15 +1,6 @@
 import re
 import os
 
-"""
-Python module for converting Bython code (C-style syntax) to Python code.
-
-This module includes utilities for renaming files from `.by` to `.py`,
-parsing import statements, converting C-style type declarations to Python function definitions,
-adjusting code blocks, and translating comments from C-style to Python.
-"""
-
-
 def _ends_in_by(word):
     """
     Returns True if word ends in .by, else False
@@ -20,9 +11,7 @@ def _ends_in_by(word):
     Returns:
         bool: Whether the 'word' ends with '.by' or not
     """
-    if word.endswith(".by"):
-        return True
-    return False
+    return word.endswith(".by")
 
 
 def _change_file_name(name, outputname=None):
@@ -38,15 +27,9 @@ def _change_file_name(name, outputname=None):
         str: Resulting filename with *.py at the end (unless 'outputname' is
         specified, then that is returned).
     """
-    # If outputname is specified, return that
     if outputname is not None:
         return outputname
-
-    # Otherwise, create a new name
-    if _ends_in_by(name):
-        return name[:-3] + ".py"
-    else:
-        return name + ".py"
+    return name[:-3] + ".py" if _ends_in_by(name) else name + ".py"
 
 
 def parse_imports(filename):
@@ -66,9 +49,7 @@ def parse_imports(filename):
     imports = re.findall(r"(?<=import\s)[\w.]+(?=;|\s|$)", infile_str)
     imports2 = re.findall(r"(?<=from\s)[\w.]+(?=\s+import)", infile_str)
 
-    imports_with_suffixes = [im + ".by" for im in imports + imports2]
-
-    return imports_with_suffixes
+    return [im + ".by" for im in imports + imports2]
 
 
 def convert_c_type_to_python(c_type):
@@ -104,7 +85,7 @@ def convert_type_declaration(line):
                indicating whether it is a function definition, and another boolean
                indicating whether it is an empty function (no body).
     """
-    pattern = r"(\w+)\s+(\w+)\s*\((.*?)\)\s*(\{)?"
+    pattern = r"(\w+)\s+(\w+)\s*(.*?)\s*(\{)?"
     match = re.match(pattern, line)
     if match:
         return_type, func_name, params, has_body = match.groups()
@@ -209,7 +190,6 @@ def parse_file(
                 continue
 
             # Convert C-style type declaration to Python type hint
-            # It seems that there is some problems regarding pass in this too
             (
                 converted_line,
                 is_function_def,
@@ -241,17 +221,9 @@ def parse_file(
                     indentation_level += 1
 
             # Replace { with : and remove }
-            indented_line = re.sub(r"[\t ]*{[ \t]*", ":", indented_line)
-            indented_line = re.sub(r"}[ \t]*", "", indented_line)
+            indented_line = re.sub(r"[\t ]*{\s*", ":", indented_line)
+            indented_line = re.sub(r"\s*}", "", indented_line)
             indented_line = re.sub(r"\n:", ":", indented_line)
-
-            # Add 'pass' where there is only a {}.
-            #
-            # DEPRECATED FOR NOW. This way of doing
-            # it is causing a lot of problems with {} in comments. The feature is removed
-            # until I find another way to do it.
-
-            # infile_str_raw = re.sub(r"{[\s\n\r]*}", "{\npass\n}", infile_str_raw)
 
             infile_str_indented += indented_line + add_comment + "\n"
 
