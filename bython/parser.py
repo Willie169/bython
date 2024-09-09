@@ -74,7 +74,36 @@ def convert_c_type_to_python(c_type):
     return type_map.get(c_type, "Any")
 
 
-def convert_type_declaration(line):
+def convert_variable_declaration(line):
+    """
+    Converts C-style variable declarations into Python variable annotations.
+
+    Args:
+        line (str): A line of code containing a variable declaration.
+
+    Returns:
+        str: The converted line in Python variable annotation format.
+    """
+    # Pattern to match variable declarations with initial values
+    init_pattern = r"(\w+)\s+(\w+)\s*=\s*(.*?);"
+    init_match = re.match(init_pattern, line)
+    if init_match:
+        var_type, var_name, value = init_match.groups()
+        python_type = convert_c_type_to_python(var_type)
+        return f"{var_name}: {python_type} = {value}"
+    
+    # Pattern to match variable declarations without initial values
+    decl_pattern = r"(\w+)\s+(\w+)\s*;"
+    decl_match = re.match(decl_pattern, line)
+    if decl_match:
+        var_type, var_name = decl_match.groups()
+        python_type = convert_c_type_to_python(var_type)
+        return f"{var_name}: {python_type} = None"
+    
+    return line
+
+
+def convert_func_type_declaration(line):
     """
     Converts a C-style function signature into a Python function signature.
     Preserves Python-style function definitions without adding type hints.
@@ -181,6 +210,9 @@ def parse_file(
         infile_str_indented = ""
 
         for line in infile_str_raw.splitlines():
+            # Convert C-style variable declarations
+            line = convert_variable_declaration(line)
+
             # Preserve existing comments
             comment_match = re.match(r"([ \t]*)(#.*$)", line)
             if comment_match:
@@ -200,7 +232,7 @@ def parse_file(
                 converted_line,
                 is_function_def,
                 is_empty_function,
-            ) = convert_type_declaration(line)
+            ) = convert_func_type_declaration(line)
 
             # Fix indentation level
             if is_function_def:

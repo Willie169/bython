@@ -25,3 +25,9 @@ void empty() {}
 # {}
 
 test_function()
+
+int a;
+
+int b = 1;
+
+a = 1;
