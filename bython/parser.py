@@ -184,6 +184,8 @@ def parse_file(
         indentation_sign = "    "
         infile_str_indented = ""
 
+        for line in infile_str_raw.splitlines():
+
             # Search for comments, and remove for now. Re-add them before writing to
             # result string
             m = re.search(r"[ \t]*(#.*$)", line)
@@ -206,6 +208,8 @@ def parse_file(
                 )
                 continue
 
+            # Convert C-style type declaration to Python type hint
+            # It seems that there is some problems regarding pass in this too
             (
                 converted_line,
                 is_function_def,
@@ -241,12 +245,12 @@ def parse_file(
             indented_line = re.sub(r"}[ \t]*", "", indented_line)
             indented_line = re.sub(r"\n:", ":", indented_line)
 
-            # Add 'pass' where there is only a {}. 
+            # Add 'pass' where there is only a {}.
             #
             # DEPRECATED FOR NOW. This way of doing
             # it is causing a lot of problems with {} in comments. The feature is removed
-            # until I find another way to do it. 
-    
+            # until I find another way to do it.
+
             # infile_str_raw = re.sub(r"{[\s\n\r]*}", "{\npass\n}", infile_str_raw)
 
             infile_str_indented += indented_line + add_comment + "\n"
