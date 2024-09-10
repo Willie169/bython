@@ -1,15 +1,49 @@
 import re
 import os
 
+
 def _ends_in_by(word):
+    """
+    Returns True if word ends in .by, else False
+
+    Args:
+        word (str): Filename to check
+
+    Returns:
+        bool: Whether the 'word' ends with '.by' or not
+    """
     return word.endswith(".by")
 
+
 def _change_file_name(name, outputname=None):
+    """
+    Changes *.by filenames to *.py filenames. If filename does not end in .by,
+    it adds .py to the end.
+
+    Args:
+        name (str): Filename to edit
+        outputname (str): Optional. Overrides result of function.
+
+    Returns:
+        str: Resulting filename with *.py at the end (unless 'outputname' is
+        specified, then that is returned).
+    """
     if outputname is not None:
         return outputname
     return name[:-3] + ".py" if _ends_in_by(name) else name + ".py"
 
+
 def parse_imports(filename):
+    """
+    Reads the file and scans for imports. Returns the assumed filename
+    of all the imported modules (i.e., module names appended with ".by").
+
+    Args:
+        filename (str): Path to file
+
+    Returns:
+        list of str: All imported modules suffixed with '.by'.
+    """
     with open(filename, "r") as infile:
         infile_str = infile.read()
 
@@ -18,38 +52,45 @@ def parse_imports(filename):
 
     return [im + ".by" for im in imports + imports2]
 
+
 def convert_func_c_type_to_python(c_type):
-    type_map = {
-        "int": "int",
-        "float": "float",
-        "double": "float",
-        "complex": "complex",
-        "char": "str",
-        "string": "str",
-        "void": "None",
-        "bool": "bool",
-        "tuple": "tuple",
-        "set": "set",
-        "def": "def"
-    }
+    """
+    Converts C-style function types to Python types.
+
+    Args:
+        c_type (str): C-style type (e.g., 'int', 'float')
+
+    Returns:
+        str: Corresponding Python type (e.g., 'int', 'float')
+    """
+    type_map = {"double": "float", "char": "str", "string": "str", "void": "None"}
     return type_map.get(c_type, c_type)
+
 
 def convert_var_c_type_to_python(c_type):
-    type_map = {
-        "int": "int",
-        "float": "float",
-        "double": "float",
-        "complex": "complex",
-        "char": "str",
-        "string": "str",
-        "void": "Any",
-        "bool": "bool",
-        "tuple": "tuple",
-        "set": "set"
-    }
+    """
+    Converts C-style variable types to Python types.
+
+    Args:
+        c_type (str): C-style type (e.g., 'int', 'float')
+
+    Returns:
+        str: Corresponding Python type (e.g., 'int', 'float')
+    """
+    type_map = {"double": "float", "char": "str", "string": "str", "void": "Any"}
     return type_map.get(c_type, c_type)
 
+
 def convert_variable_declaration(line):
+    """
+    Converts C-style variable declarations into Python variable annotations.
+
+    Args:
+        line (str): A line of code containing a variable declaration.
+
+    Returns:
+        str: The converted line in Python variable annotation format.
+    """
     # Ignore return statements
     if line.strip().startswith("return"):
         return line
@@ -61,7 +102,7 @@ def convert_variable_declaration(line):
         var_type, var_name, value = init_match.groups()
         python_type = convert_var_c_type_to_python(var_type)
         return f"{var_name}: {python_type} = {value}"
-    
+
     # Pattern to match variable declarations without initial values
     decl_pattern = r"(\w+)\s+(\w+)\s*$"
     decl_match = re.match(decl_pattern, line)
@@ -69,16 +110,46 @@ def convert_variable_declaration(line):
         var_type, var_name = decl_match.groups()
         python_type = convert_var_c_type_to_python(var_type)
         return f"{var_name}: {python_type} = None"
-    
+
     return line
+
 
 def parse_file(
     filepath, add_true_line, filename_prefix, outputname=None, change_imports=None
 ):
+    """
+    Converts a Bython file to a Python file and writes it to disk.
+
+    Args:
+        filepath (str): Path to the Bython file you want to parse.
+        add_true_line (bool): Whether to add a line at the top of the
+                              file, adding support for C-style true/false
+                              in addition to capitalized True/False.
+        filename_prefix (str): Prefix to the resulting file name.
+        outputname (str): Optional. Overrides the name of the output file.
+        change_imports (dict): Names of imported Bython modules, and their
+                               Python alternatives.
+
+    Returns:
+        None
+    """
+
     def convert_comments(code):
-        # Convert multi-line comments while preserving C-style syntax
+        """
+        Converts C-style comments to Python-style comments.
+
+        Args:
+            code (str): The Bython code as a string
+
+        Returns:
+            str: Code with converted comments
+        """
+        # Convert multi-line comments
         code = re.sub(
-            r"/\*(.*?)\*/", lambda m: f"'''\n{m.group(1).strip()}\n'''", code, flags=re.DOTALL
+            r"/\*(.*?)\*/",
+            lambda m: f"'''\n{m.group(1).strip()}\n'''",
+            code,
+            flags=re.DOTALL,
         )
         # Convert single-line comments
         code = re.sub(r"//(.*)$", lambda m: f"#{m.group(1)}", code, flags=re.MULTILINE)
@@ -95,7 +166,14 @@ def parse_file(
         c_pattern = r"(\w+)\s+(\w+)\s*\((.*?)\)\s*(\{)?\s*(\})?(.*)$"
         c_match = re.match(c_pattern, line)
         if c_match:
-            return_type, func_name, params, opening_brace, closing_brace, comment = c_match.groups()
+            (
+                return_type,
+                func_name,
+                params,
+                opening_brace,
+                closing_brace,
+                comment,
+            ) = c_match.groups()
             params_converted = []
             for param in params.split(","):
                 param = param.strip()
@@ -108,7 +186,7 @@ def parse_file(
                         params_converted.append(f"{param_name}: {python_type}")
                     else:
                         params_converted.append(param)
-            
+
             return_hint = f" -> {convert_func_c_type_to_python(return_type)}"
             is_empty_function = bool(closing_brace) or not opening_brace
 
@@ -118,7 +196,7 @@ def parse_file(
                 True,
                 is_empty_function,
             )
-        
+
         return line, "", False, False
 
     filename = os.path.basename(filepath)
@@ -139,16 +217,20 @@ def parse_file(
 
         for line in infile_str_raw.splitlines():
             stripped_line = line.strip()
-            
+
             # Check for multiline comment start/end
             if stripped_line.startswith("'''") or stripped_line.endswith("'''"):
                 multiline_comment = not multiline_comment
-                infile_str_indented += indentation_sign * indentation_level + stripped_line + "\n"
+                infile_str_indented += (
+                    indentation_sign * indentation_level + stripped_line + "\n"
+                )
                 continue
 
             # Preserve existing comments and multiline comment content
             if multiline_comment or stripped_line.startswith("#"):
-                infile_str_indented += indentation_sign * indentation_level + stripped_line + "\n"
+                infile_str_indented += (
+                    indentation_sign * indentation_level + stripped_line + "\n"
+                )
                 continue
 
             # skip empty lines:
@@ -157,7 +239,12 @@ def parse_file(
                 continue
 
             # Convert C-style type declaration to Python type hint
-            converted_line, comment, is_function_def, is_empty_function = convert_func_type_declaration(stripped_line)
+            (
+                converted_line,
+                comment,
+                is_function_def,
+                is_empty_function,
+            ) = convert_func_type_declaration(stripped_line)
 
             # Convert variable declarations
             if not is_function_def:
@@ -173,7 +260,11 @@ def parse_file(
             else:
                 # Check for increased indentation
                 if stripped_line.endswith("{"):
-                    indented_line = indentation_sign * indentation_level + stripped_line[:-1].rstrip() + ":"
+                    indented_line = (
+                        indentation_sign * indentation_level
+                        + stripped_line[:-1].rstrip()
+                        + ":"
+                    )
                     indentation_level += 1
                 # Check for reduced indent level
                 elif stripped_line.startswith("}"):
@@ -182,7 +273,9 @@ def parse_file(
                     continue  # Skip this line as we don't need to write '}' in Python
                 # Add indentation
                 else:
-                    indented_line = indentation_sign * indentation_level + converted_line
+                    indented_line = (
+                        indentation_sign * indentation_level + converted_line
+                    )
 
             # Add 'pass' for empty functions
             if is_empty_function:
