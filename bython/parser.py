@@ -67,8 +67,10 @@ def convert_c_type_to_python(c_type):
         "float": "float",
         "double": "float",
         "char": "str",
+        "string": "str",
         "void": "None",
         "bool": "bool",
+        "vector": "list",
         "def": "def"
     }
     return type_map.get(c_type, "Any")
