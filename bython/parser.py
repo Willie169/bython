@@ -50,6 +50,10 @@ def convert_var_c_type_to_python(c_type):
     return type_map.get(c_type, c_type)
 
 def convert_variable_declaration(line):
+    # Ignore return statements
+    if line.strip().startswith("return"):
+        return line
+
     # Pattern to match variable declarations with initial values
     init_pattern = r"(\w+)\s+(\w+)\s*=\s*(.*?)$"
     init_match = re.match(init_pattern, line)
@@ -68,54 +72,54 @@ def convert_variable_declaration(line):
     
     return line
 
-def convert_func_type_declaration(line):
-    # Check for Python-style function definition
-    py_pattern = r"(def\s+\w+\s*\(.*?\)\s*:)(.*)$"
-    py_match = re.match(py_pattern, line)
-    if py_match:
-        return py_match.group(1), py_match.group(2), True, False
-
-    # Check for C-style function declaration
-    c_pattern = r"(\w+)\s+(\w+)\s*\((.*?)\)\s*(\{)?\s*(\})?(.*)$"
-    c_match = re.match(c_pattern, line)
-    if c_match:
-        return_type, func_name, params, opening_brace, closing_brace, comment = c_match.groups()
-        params_converted = []
-        for param in params.split(","):
-            param = param.strip()
-            if param:
-                param_parts = param.split()
-                if len(param_parts) > 1:
-                    param_type = " ".join(param_parts[:-1])
-                    param_name = param_parts[-1]
-                    python_type = convert_func_c_type_to_python(param_type)
-                    params_converted.append(f"{param_name}: {python_type}")
-                else:
-                    params_converted.append(param)
-        
-        return_hint = f" -> {convert_func_c_type_to_python(return_type)}" if return_type != "void" else ""
-        is_empty_function = bool(closing_brace)
-
-        return (
-            f"def {func_name}({', '.join(params_converted)}){return_hint}:",
-            comment,
-            True,
-            is_empty_function,
-        )
-    
-    return line, "", False, False
-
 def parse_file(
     filepath, add_true_line, filename_prefix, outputname=None, change_imports=None
 ):
     def convert_comments(code):
-        # Convert multi-line comments
+        # Convert multi-line comments while preserving C-style syntax
         code = re.sub(
-            r"/\*(.*?)\*/", lambda m: f"'''{m.group(1)}'''", code, flags=re.DOTALL
+            r"/\*(.*?)\*/", lambda m: f"'''\n{m.group(1).strip()}\n'''", code, flags=re.DOTALL
         )
         # Convert single-line comments
         code = re.sub(r"//(.*)$", lambda m: f"#{m.group(1)}", code, flags=re.MULTILINE)
         return code
+
+    def convert_func_type_declaration(line):
+        # Check for Python-style function definition
+        py_pattern = r"(def\s+\w+\s*\(.*?\)\s*:)(.*)$"
+        py_match = re.match(py_pattern, line)
+        if py_match:
+            return py_match.group(1), py_match.group(2), True, False
+
+        # Check for C-style function declaration
+        c_pattern = r"(\w+)\s+(\w+)\s*\((.*?)\)\s*(\{)?\s*(\})?(.*)$"
+        c_match = re.match(c_pattern, line)
+        if c_match:
+            return_type, func_name, params, opening_brace, closing_brace, comment = c_match.groups()
+            params_converted = []
+            for param in params.split(","):
+                param = param.strip()
+                if param:
+                    param_parts = param.split()
+                    if len(param_parts) > 1:
+                        param_type = " ".join(param_parts[:-1])
+                        param_name = param_parts[-1]
+                        python_type = convert_func_c_type_to_python(param_type)
+                        params_converted.append(f"{param_name}: {python_type}")
+                    else:
+                        params_converted.append(param)
+            
+            return_hint = f" -> {convert_func_c_type_to_python(return_type)}"
+            is_empty_function = bool(closing_brace) or not opening_brace
+
+            return (
+                f"def {func_name}({', '.join(params_converted)}){return_hint}:",
+                comment,
+                True,
+                is_empty_function,
+            )
+        
+        return line, "", False, False
 
     filename = os.path.basename(filepath)
     output_filename = filename_prefix + _change_file_name(filename, outputname)
@@ -131,24 +135,29 @@ def parse_file(
         indentation_sign = "    "
         infile_str_indented = ""
         inside_function = False
+        multiline_comment = False
 
         for line in infile_str_raw.splitlines():
-            # Preserve existing comments
-            comment_match = re.match(r"([ \t]*)(#.*$)", line)
-            if comment_match:
-                infile_str_indented += indentation_sign * indentation_level + comment_match.group(2) + "\n"
+            stripped_line = line.strip()
+            
+            # Check for multiline comment start/end
+            if stripped_line.startswith("'''") or stripped_line.endswith("'''"):
+                multiline_comment = not multiline_comment
+                infile_str_indented += indentation_sign * indentation_level + stripped_line + "\n"
                 continue
 
-            # remove existing whitespace:
-            line = line.strip()
+            # Preserve existing comments and multiline comment content
+            if multiline_comment or stripped_line.startswith("#"):
+                infile_str_indented += indentation_sign * indentation_level + stripped_line + "\n"
+                continue
 
             # skip empty lines:
-            if not line:
+            if not stripped_line:
                 infile_str_indented += "\n"
                 continue
 
             # Convert C-style type declaration to Python type hint
-            converted_line, comment, is_function_def, is_empty_function = convert_func_type_declaration(line)
+            converted_line, comment, is_function_def, is_empty_function = convert_func_type_declaration(stripped_line)
 
             # Convert variable declarations
             if not is_function_def:
@@ -163,11 +172,11 @@ def parse_file(
                 indentation_level += 1
             else:
                 # Check for increased indentation
-                if line.endswith("{"):
-                    indented_line = indentation_sign * indentation_level + line[:-1].rstrip() + ":"
+                if stripped_line.endswith("{"):
+                    indented_line = indentation_sign * indentation_level + stripped_line[:-1].rstrip() + ":"
                     indentation_level += 1
                 # Check for reduced indent level
-                elif line.startswith("}"):
+                elif stripped_line.startswith("}"):
                     indentation_level = max(0, indentation_level - 1)
                     inside_function = False
                     continue  # Skip this line as we don't need to write '}' in Python
