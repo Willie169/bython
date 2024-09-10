@@ -1,32 +1,39 @@
 import re
 import os
 
+"""
+This module provides functionality to convert Bython files to Python files.
+It includes various helper functions for parsing and converting different
+aspects of the code, such as imports, type declarations, and comments.
+"""
+
 
 def _ends_in_by(word):
     """
-    Returns True if word ends in .by, else False
+    Checks if a filename ends with '.by'.
 
     Args:
         word (str): Filename to check
 
     Returns:
-        bool: Whether the 'word' ends with '.by' or not
+        bool: True if the filename ends with '.by', False otherwise
     """
     return word.endswith(".by")
 
 
 def _change_file_name(name, outputname=None):
     """
-    Changes *.by filenames to *.py filenames. If filename does not end in .by,
-    it adds .py to the end.
+    Modifies filenames to ensure they have a '.py' extension.
+
+    If the filename ends with '.by', it replaces it with '.py'.
+    If it doesn't end with '.by', it appends '.py'.
 
     Args:
-        name (str): Filename to edit
-        outputname (str): Optional. Overrides result of function.
+        name (str): Original filename
+        outputname (str, optional): Override for the output filename
 
     Returns:
-        str: Resulting filename with *.py at the end (unless 'outputname' is
-        specified, then that is returned).
+        str: Modified filename with '.py' extension, or outputname if provided
     """
     if outputname is not None:
         return outputname
@@ -35,14 +42,16 @@ def _change_file_name(name, outputname=None):
 
 def parse_imports(filename):
     """
-    Reads the file and scans for imports. Returns the assumed filename
-    of all the imported modules (i.e., module names appended with ".by").
+    Extracts import statements from a file and returns a list of
+    imported module names with '.by' appended.
+
+    This function handles both 'import' and 'from ... import' statements.
 
     Args:
-        filename (str): Path to file
+        filename (str): Path to the file to parse
 
     Returns:
-        list of str: All imported modules suffixed with '.by'.
+        list of str: List of imported module names with '.by' appended
     """
     with open(filename, "r") as infile:
         infile_str = infile.read()
@@ -53,43 +62,189 @@ def parse_imports(filename):
     return [im + ".by" for im in imports + imports2]
 
 
-def convert_func_c_type_to_python(c_type):
+def type_template(name, map, containers_map):
     """
-    Converts C-style function types to Python types.
+    Converts Bython types to their Python equivalents.
+
+    This function handles both simple types and complex nested types.
 
     Args:
-        c_type (str): C-style type (e.g., 'int', 'float')
+        name (str): The Bython type name to convert
+        map (dict): Mapping of simple Bython types to Python types
+        containers_map (dict): Mapping of container Bython types to Python types
 
     Returns:
-        str: Corresponding Python type (e.g., 'int', 'float')
+        str: The equivalent Python type
     """
-    type_map = {"double": "float", "char": "str", "string": "str", "void": "None"}
-    return type_map.get(c_type, c_type)
+    if not name.startswith("by_"):
+        return name
+    elif name in map:
+        return map[name]
+    elif "<" in name[3:] or "[" in name[3:]:
+
+        def parse_nested(type_str):
+            if "<" not in type_str and "[" not in type_str:
+                return map.get(type_str, type_str)
+
+            outer, inner = (
+                type_str.split("<", 1) if "<" in type_str else type_str.split("[", 1)
+            )
+            inner = inner.rstrip(">]")
+
+            params = []
+            depth = 0
+            current = ""
+            for char in inner:
+                if char in "<[":
+                    depth += 1
+                elif char in ">]":
+                    depth -= 1
+                elif char == "," and depth == 0:
+                    params.append(parse_nested(current.strip()))
+                    current = ""
+                    continue
+                current += char
+            if current:
+                params.append(parse_nested(current.strip()))
+
+            container = containers_map.get(outer, outer)
+            return container[tuple(params) if len(params) > 1 else params[0]]
+
+        return parse_nested(name[3:])
+    else:
+        return name[3:]
 
 
-def convert_var_c_type_to_python(c_type):
+def convert_func_by_type_to_python(c_type):
     """
-    Converts C-style variable types to Python types.
+    Converts Bython function return types and parameter types to Python types.
 
     Args:
-        c_type (str): C-style type (e.g., 'int', 'float')
+        c_type (str): Bython type to convert
 
     Returns:
-        str: Corresponding Python type (e.g., 'int', 'float')
+        str: Equivalent Python type
     """
-    type_map = {"double": "float", "char": "str", "string": "str", "void": "Any"}
-    return type_map.get(c_type, c_type)
+    type_map = {
+        "by_def": "def",
+        "by_void": "None",
+        "by_bool": "bool",
+        "by_int": "int",
+        "by_long": "int",
+        "by_float": "float",
+        "by_double": "float",
+        "by_char": "str",
+        "by_str": "str",
+        "by_string": "str",
+        "by_map": "dict",
+        "by_unordered_map": "dict",
+        "by_vector": "list",
+        "by_array": "list",
+        "by_list": "list",
+        "by_tuple": "tuple",
+        "by_set": "set",
+        "by_unordered_set": "set",
+        "by_short": "int",
+        "by_byte": "int",
+        "by_result": "Union",
+        "by_array_list": "list",
+        "by_linked_list": "list",
+        "by_deque": "collections.deque",
+        "by_priority_queue": "queue.PriorityQueue",
+        "by_queue": "queue.Queue",
+        "by_stack": "list",
+        "by_optional": "Union[None, Any]",
+    }
+    containers_map = {
+        "by_map": "dict",
+        "by_unordered_map": "dict",
+        "by_vector": "list",
+        "by_array": "list",
+        "by_list": "list",
+        "by_tuple": "tuple",
+        "by_set": "set",
+        "by_unordered_set": "set",
+        "by_result": "Union",
+        "by_array_list": "list",
+        "by_linked_list": "list",
+        "by_deque": "collections.deque",
+        "by_priority_queue": "queue.PriorityQueue",
+        "by_queue": "queue.Queue",
+        "by_stack": "list",
+    }
+    return type_template(c_type, type_map, containers_map)
+
+
+def convert_var_by_type_to_python(c_type):
+    """
+    Converts Bython variable types to Python types.
+
+    Args:
+        c_type (str): Bython type to convert
+
+    Returns:
+        str: Equivalent Python type
+    """
+    type_map = {
+        "by_void": "Any",
+        "by_bool": "bool",
+        "by_int": "int",
+        "by_long": "int",
+        "by_float": "float",
+        "by_double": "float",
+        "by_char": "str",
+        "by_str": "str",
+        "by_string": "str",
+        "by_map": "dict",
+        "by_unordered_map": "dict",
+        "by_vector": "list",
+        "by_array": "list",
+        "by_list": "list",
+        "by_tuple": "tuple",
+        "by_set": "set",
+        "by_unordered_set": "set",
+        "by_short": "int",
+        "by_byte": "int",
+        "by_result": "Union",
+        "by_array_list": "list",
+        "by_linked_list": "list",
+        "by_deque": "collections.deque",
+        "by_priority_queue": "queue.PriorityQueue",
+        "by_queue": "queue.Queue",
+        "by_stack": "list",
+        "by_optional": "Union[None, Any]",
+    }
+    containers_map = {
+        "by_map": "dict",
+        "by_unordered_map": "dict",
+        "by_vector": "list",
+        "by_array": "list",
+        "by_list": "list",
+        "by_tuple": "tuple",
+        "by_set": "set",
+        "by_unordered_set": "set",
+        "by_result": "Union",
+        "by_array_list": "list",
+        "by_linked_list": "list",
+        "by_deque": "collections.deque",
+        "by_priority_queue": "queue.PriorityQueue",
+        "by_queue": "queue.Queue",
+        "by_stack": "list",
+    }
+    return type_template(c_type, type_map, containers_map)
 
 
 def convert_variable_declaration(line):
     """
-    Converts C-style variable declarations into Python variable annotations.
+    Converts Bython-style variable declarations to Python variable annotations.
+
+    This function handles both declarations with and without initial values.
 
     Args:
-        line (str): A line of code containing a variable declaration.
+        line (str): A line of code containing a variable declaration
 
     Returns:
-        str: The converted line in Python variable annotation format.
+        str: The converted line in Python variable annotation format
     """
     # Ignore return statements
     if line.strip().startswith("return"):
@@ -100,7 +255,7 @@ def convert_variable_declaration(line):
     init_match = re.match(init_pattern, line)
     if init_match:
         var_type, var_name, value = init_match.groups()
-        python_type = convert_var_c_type_to_python(var_type)
+        python_type = convert_var_by_type_to_python(var_type)
         return f"{var_name}: {python_type} = {value}"
 
     # Pattern to match variable declarations without initial values
@@ -108,7 +263,7 @@ def convert_variable_declaration(line):
     decl_match = re.match(decl_pattern, line)
     if decl_match:
         var_type, var_name = decl_match.groups()
-        python_type = convert_var_c_type_to_python(var_type)
+        python_type = convert_var_by_type_to_python(var_type)
         return f"{var_name}: {python_type} = None"
 
     return line
@@ -120,15 +275,20 @@ def parse_file(
     """
     Converts a Bython file to a Python file and writes it to disk.
 
+    This function handles the entire conversion process, including:
+    - Adding support for C-style true/false
+    - Converting comments
+    - Converting function and variable declarations
+    - Adjusting indentation
+    - Handling imports
+
     Args:
-        filepath (str): Path to the Bython file you want to parse.
-        add_true_line (bool): Whether to add a line at the top of the
-                              file, adding support for C-style true/false
-                              in addition to capitalized True/False.
-        filename_prefix (str): Prefix to the resulting file name.
-        outputname (str): Optional. Overrides the name of the output file.
-        change_imports (dict): Names of imported Bython modules, and their
-                               Python alternatives.
+        filepath (str): Path to the Bython file to parse
+        add_true_line (bool): Whether to add support for C-style true/false
+        filename_prefix (str): Prefix for the output filename
+        outputname (str, optional): Override for the output filename
+        change_imports (dict, optional): Mapping of imported Bython modules
+                                         to their Python alternatives
 
     Returns:
         None
@@ -137,6 +297,8 @@ def parse_file(
     def convert_comments(code):
         """
         Converts C-style comments to Python-style comments.
+
+        This function handles both multi-line and single-line comments.
 
         Args:
             code (str): The Bython code as a string
@@ -156,6 +318,21 @@ def parse_file(
         return code
 
     def convert_func_type_declaration(line):
+        """
+        Converts Bython function declarations to Python function definitions.
+
+        This function handles both C-style and Python-style function declarations.
+
+        Args:
+            line (str): A line of code containing a function declaration
+
+        Returns:
+            tuple: (converted_line, comment, is_function_def, is_empty_function)
+                converted_line (str): The converted function definition
+                comment (str): Any inline comment found after the declaration
+                is_function_def (bool): Whether the line is a function definition
+                is_empty_function (bool): Whether the function is empty (has no body)
+        """
         # Check for Python-style function definition
         py_pattern = r"(def\s+\w+\s*\(.*?\)\s*:)(.*)$"
         py_match = re.match(py_pattern, line)
@@ -182,12 +359,12 @@ def parse_file(
                     if len(param_parts) > 1:
                         param_type = " ".join(param_parts[:-1])
                         param_name = param_parts[-1]
-                        python_type = convert_func_c_type_to_python(param_type)
+                        python_type = convert_func_by_type_to_python(param_type)
                         params_converted.append(f"{param_name}: {python_type}")
                     else:
                         params_converted.append(param)
 
-            return_hint = f" -> {convert_func_c_type_to_python(return_type)}"
+            return_hint = f" -> {convert_func_by_type_to_python(return_type)}"
             is_empty_function = bool(closing_brace) or not opening_brace
 
             return (
@@ -308,3 +485,36 @@ def parse_file(
                 )
 
         outfile.write(infile_str_indented)
+
+
+"""
+Additional module-level documentation:
+
+This module provides a set of functions to convert Bython code to Python code. 
+The main entry point is the `parse_file` function, which orchestrates the 
+entire conversion process.
+
+Key features:
+1. Converts Bython-style variable and function declarations to Python syntax
+2. Handles type conversions from Bython types to Python types
+3. Converts C-style comments to Python comments
+4. Manages indentation and braces-to-colon conversion
+5. Supports import renaming
+
+Usage:
+    parse_file(filepath, add_true_line, filename_prefix, outputname, change_imports)
+
+Where:
+    - filepath: Path to the Bython file to be converted
+    - add_true_line: Boolean to add 'true=True; false=False;' at the start of the file
+    - filename_prefix: Prefix for the output Python file
+    - outputname: (Optional) Override for the output filename
+    - change_imports: (Optional) Dictionary to rename imported modules
+
+The module uses regular expressions extensively for parsing and converting 
+code. It also handles nested type declarations and converts them to appropriate 
+Python type hints.
+
+Note: This parser assumes well-formed Bython code as input. It may not handle 
+all edge cases or syntactically incorrect Bython code.
+"""
