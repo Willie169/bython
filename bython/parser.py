@@ -113,7 +113,6 @@ def convert_func_by_type_to_python(c_type):
         str: Equivalent Python type
     """
     type_map = {
-        "by_def": "def",
         "by_void": "None",
         "by_bool": "bool",
         "by_int": "int",
@@ -346,12 +345,16 @@ def parse_file(
                     if len(param_parts) > 1:
                         param_type = " ".join(param_parts[:-1])
                         param_name = param_parts[-1]
-                        python_type = convert_func_by_type_to_python(param_type)
+                        python_type = convert_var_by_type_to_python(param_type)
                         params_converted.append(f"{param_name}: {python_type}")
                     else:
                         params_converted.append(param)
 
-            return_hint = f" -> {convert_func_by_type_to_python(return_type)}"
+            hint = convert_func_by_type_to_python(return_type)
+            if hint == "def":
+                return_hint = ""
+            else:
+                return_hint = f" -> {hint}"
             is_empty_function = bool(closing_brace) or not opening_brace
 
             return (
@@ -453,13 +456,6 @@ def parse_file(
 
             infile_str_indented += indented_line + "\n"
 
-        # Support for extra, non-brace related stuff
-        infile_str_indented = re.sub(r"else\s+if", "elif", infile_str_indented)
-        infile_str_indented = re.sub(r";\n", "\n", infile_str_indented) 
-        infile_str_indented = re.sub(r"(\S+)\s*&&\s*(\S+)", r"\1 and \2", infile_str_indented)
-        infile_str_indented = re.sub(r"(\S+)\s*||\s*(\S+)", r"\1 or \2", infile_str_indented)
-        infile_str_indented = re.sub(r'(?<!\!=)\s*!\s*([^\s\!=]+)', r'not \1', infile_str_indented)
-
         # Change imported names if necessary
         if change_imports:
             for module, alias in change_imports.items():
@@ -473,6 +469,13 @@ def parse_file(
                     alias,
                     infile_str_indented,
                 )
+
+        # Support for extra, non-brace related stuff
+        infile_str_indented = re.sub(r"else\s+if", "elif", infile_str_indented)
+        infile_str_indented = re.sub(r";\n", "\n", infile_str_indented) 
+        infile_str_indented = re.sub(r"(\S+)\s+\&\&\s+(\S+)", r"\1 and \2", infile_str_indented)
+        infile_str_indented = re.sub(r"(\S+)\s+\|\|\s+(\S+)", r"\1 or \2", infile_str_indented)
+        infile_str_indented = re.sub(r'(?<!\!=)\s*!\s*([^\s\!=]+)', r'not \1', infile_str_indented)
 
         outfile.write(infile_str_indented)
 
