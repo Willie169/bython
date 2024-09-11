@@ -1,0 +1,49 @@
+import numpy as np;
+import matplotlib.pyplot as plt;
+
+def test_function() {
+    x = np.linspace(0, 10, 1000);
+  y = np.sin(x);
+        
+      plt.plot(x, y);
+plt.show();
+}
+
+int add(int a, b) {
+    return a + b
+}
+
+int h;
+
+int g = 1;
+
+int l = 1
+
+by_void empty() {}
+
+// {}
+/*
+{}
+*/
+'''
+/*
+*/
+{}
+'''
+# {}
+"""
+x = 0;
+"}
+"""
+/*
+int a = 3;
+*/
+''' Hello world '''
+
+test_function()
+
+int a;
+
+int b = 1;
+
+a = 1;

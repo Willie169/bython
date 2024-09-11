@@ -18,9 +18,4 @@ def add(a: int, b: int) -> int:
 def empty() -> None:
     pass
 
-
-''':
-    pass
-'''
-
 test_function()
