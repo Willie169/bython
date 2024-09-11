@@ -8,19 +8,6 @@ aspects of the code, such as imports, type declarations, and comments.
 """
 
 
-def _ends_in_by(word):
-    """
-    Checks if a filename ends with '.by'.
-
-    Args:
-        word (str): Filename to check
-
-    Returns:
-        bool: True if the filename ends with '.by', False otherwise
-    """
-    return word.endswith(".by")
-
-
 def _change_file_name(name, outputname=None):
     """
     Modifies filenames to ensure they have a '.py' extension.
@@ -37,7 +24,7 @@ def _change_file_name(name, outputname=None):
     """
     if outputname is not None:
         return outputname
-    return name[:-3] + ".py" if _ends_in_by(name) else name + ".py"
+    return name[:-3] + ".py" if name.endswith(".by") else name + ".py"
 
 
 def parse_imports(filename):
@@ -468,7 +455,10 @@ def parse_file(
 
         # Support for extra, non-brace related stuff
         infile_str_indented = re.sub(r"else\s+if", "elif", infile_str_indented)
-        infile_str_indented = re.sub(r";\n", "\n", infile_str_indented)
+        infile_str_indented = re.sub(r";\n", "\n", infile_str_indented) 
+        infile_str_indented = re.sub(r"(\S+)\s*&&\s*(\S+)", r"\1 and \2", infile_str_indented)
+        infile_str_indented = re.sub(r"(\S+)\s*||\s*(\S+)", r"\1 or \2", infile_str_indented)
+        infile_str_indented = re.sub(r'(?<!\!=)\s*!\s*([^\s\!=]+)', r'not \1', infile_str_indented)
 
         # Change imported names if necessary
         if change_imports:
@@ -514,7 +504,4 @@ Where:
 The module uses regular expressions extensively for parsing and converting 
 code. It also handles nested type declarations and converts them to appropriate 
 Python type hints.
-
-Note: This parser assumes well-formed Bython code as input. It may not handle 
-all edge cases or syntactically incorrect Bython code.
 """
